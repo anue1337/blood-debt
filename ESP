@@ -10,7 +10,7 @@ local weaponMarkers = {
     },
     Sheriff = {
         weapons = {"RR-Snubby", "GG-17", "IZVEKH-412"},
-        color = {0, 0, 255},
+        color = {0, 255, 0},
         label = "SHERIFF",
         size = 16
     }
@@ -20,7 +20,7 @@ local categoryOrder = {"Killer", "Sheriff"}
 
 local ESP_SETTINGS = {
     Generator = {
-        text = "GENERATOR",
+        text = "GENERATOR"
         color = {0, 255, 0},
         size = 14
     },
@@ -243,22 +243,33 @@ local function renderGeneratorESPs()
 end
 
 
-local function mainLoop()
+local function maintainArmedList()
     while true do
-        local success, err = pcall(function()
-            updateArmedPlayersList()
-            updateGeneratorsList()
-            renderPlayerESPs()
-            renderGeneratorESPs()
-        end)
-        
-        if not success then
-            print("Error:", err)
-        end
-        
+        updateArmedPlayersList()
+        wait(0.5)
+    end
+end
+
+local function maintainGenerators()
+    while true do
+        updateGeneratorsList()
+        wait(3)
+    end
+end
+
+local function mainRenderLoop()
+    while true do
+        renderPlayerESPs()
+        renderGeneratorESPs()
         wait(0.03)
     end
 end
 
+local function initialize()
+    spawn(maintainArmedList)
+    spawn(maintainGenerators)
+    spawn(mainRenderLoop)
+end
 
-spawn(mainLoop)
+
+initialize()
