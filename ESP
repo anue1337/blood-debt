@@ -20,7 +20,7 @@ local categoryOrder = {"Killer", "Sheriff"}
 
 local ESP_SETTINGS = {
     Generator = {
-        text = "GENERATOR"
+        text = "GENERATOR",
         color = {0, 255, 0},
         size = 14
     },
