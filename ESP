@@ -1,0 +1,151 @@
+local PlayersService = findservice(Game, "Players")
+local Workspace = findservice(Game, "Workspace")
+local armedPlayers = {}
+local espCache = {}
+
+
+local function createESP()
+    local text = Drawing.new("Text")
+    text.Text = "ARMED"
+    text.Color = {255, 0, 0}
+    text.Size = 14
+    text.Center = true
+    text.Outline = true
+    text.Visible = false
+    return text
+end
+
+
+local function checkContainer(container)
+    if not container then return false end
+    
+    for _, tool in ipairs(getchildren(container)) do
+        if getclassname(tool) == "Tool" then
+            if findfirstchild(tool, "ammoModel") or findfirstchild(tool, "GUNCHECK") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+
+local function checkWeapons(player)
+    
+    local backpack = findfirstchild(player, "Backpack")
+    if checkContainer(backpack) then return true end
+    
+    
+    local character = getcharacter(player)
+    if character and player ~= getlocalplayer() then
+        return checkContainer(character)
+    end
+    
+    return false
+end
+
+
+local function updateArmedList()
+    while true do
+        local newArmed = {}
+        
+        
+        for _, player in ipairs(getchildren(PlayersService)) do
+            if checkWeapons(player) then
+                newArmed[getname(player)] = true
+            end
+        end
+        
+
+        local npcFolder = findfirstchild(Workspace, "NPCSFolder")
+        if npcFolder then
+            for _, npc in ipairs(getchildren(npcFolder)) do
+                local npcName = getname(npc)
+                if checkContainer(npc) then
+                    newArmed[npcName] = true
+                end
+            end
+        end
+        
+        armedPlayers = newArmed
+        wait(0.2)
+    end
+end
+
+
+local function mainESP()
+    while true do
+
+        local targets = {}
+        
+
+        local npcFolder = findfirstchild(Workspace, "NPCSFolder")
+        if npcFolder then
+            for _, npc in ipairs(getchildren(npcFolder)) do
+                targets[getname(npc)] = npc
+            end
+        end
+        
+
+        for _, player in ipairs(getchildren(PlayersService)) do
+            local char = getcharacter(player)
+            if char then
+                targets[getname(player)] = char
+            end
+        end
+        
+
+        for name, target in pairs(targets) do
+            local rootPart = findfirstchild(target, "HumanoidRootPart")
+            
+            if rootPart and armedPlayers[name] then
+                if not espCache[name] then
+                    espCache[name] = createESP()
+                end
+                
+                local pos = getposition(rootPart)
+                local screenPos, onScreen = worldtoscreenpoint({pos.x, pos.y, pos.z})
+                
+                espCache[name].Visible = onScreen
+                if onScreen then
+                    espCache[name].Position = {screenPos.x, screenPos.y - 30}
+                end
+            else
+                if espCache[name] then
+                    espCache[name]:Remove()
+                    espCache[name] = nil
+                end
+            end
+        end
+        
+
+        for cachedName, esp in pairs(espCache) do
+            if not armedPlayers[cachedName] then
+                esp:Remove()
+                espCache[cachedName] = nil
+            end
+        end
+        
+        wait(0.03)
+    end
+end
+
+
+local function keyControl()
+    while true do
+        if getpressedkey() == "End" then
+            for _, esp in pairs(espCache) do
+                esp:Remove()
+            end
+            espCache = {}
+            print("ESP desativado")
+            break
+        end
+        wait(0.1)
+    end
+end
+
+
+spawn(updateArmedList)
+spawn(mainESP)
+spawn(keyControl)
