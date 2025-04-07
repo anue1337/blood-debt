@@ -1,24 +1,33 @@
 local PlayersService = findservice(Game, "Players")
 local Workspace = findservice(Game, "Workspace")
 
-local ESP_SETTINGS = {
-    Armed = {
-        Text = "ARMED",
-        Color = {255, 0, 0},
-        Offset = 30
+local weaponMarkers = {
+    Killer = {
+        weapons = {"Sawn-off", "K1911", "RR-LightCompactPistolS", "JS2-Derringy", "KOLT-AR15", "JS-22", "KamatovS"},
+        color = {255, 0, 0},
+        label = "KILLER",
+        size = 14
     },
-    Generator = {
-        Text = "GENERATOR",
-        Color = {0, 255, 0},
-        Offset = 15
-    },
-    TextSize = 14
+    Sheriff = {
+        weapons = {"RR-Snubby", "GG-17", "IZVEKH-412"},
+        color = {0, 0, 255},
+        label = "SHERIFF",
+        size = 16
+    }
 }
 
-local UPDATE_INTERVALS = {
-    ArmedList = 0.2,
-    Generators = 2,
-    Positions = 0.03
+local categoryOrder = {"Killer", "Sheriff"}
+
+local ESP_SETTINGS = {
+    Generator = {
+        text = "GENERATOR",
+        color = {0, 255, 0},
+        size = 14
+    },
+    offsets = {
+        player = 30,
+        generator = 15
+    }
 }
 
 local cached = {
@@ -29,35 +38,47 @@ local cached = {
 }
 
 
-local function createESPObject(textContent, color)
-    local text = Drawing.new("Text")
-    text.Text = textContent
-    text.Color = color
-    text.Size = ESP_SETTINGS.TextSize
-    text.Center = true
-    text.Outline = true
-    text.Visible = false
-    return text
-end
-
-local function hasWeaponInContainer(container)
-    if not container then return false end
-    
-    for _, tool in ipairs(getchildren(container)) do
-        if getclassname(tool) == "Tool" then
-            local hasAmmo = findfirstchild(tool, "ammoModel")
-            local hasCheck = findfirstchild(tool, "GUNCHECK")
-            if hasAmmo or hasCheck then
-                return true
-            end
+local function tableFind(tbl, value)
+    for _, v in ipairs(tbl) do
+        if v == value then
+            return true
         end
     end
     return false
 end
 
-local function getValidPosition(target, partName)
-    local part = findfirstchild(target, partName) or target
-    return getposition(part)
+local function getWeaponCategory(toolName)
+    for _, categoryName in ipairs(categoryOrder) do
+        local category = weaponMarkers[categoryName]
+        if tableFind(category.weapons, toolName) then
+            return categoryName
+        end
+    end
+    return nil
+end
+
+local function findHighestPriorityWeapon(container)
+    if not container then return nil end
+    
+    local highestPriority = math.huge
+    local bestCategory = nil
+
+    for _, tool in ipairs(getchildren(container)) do
+        if getclassname(tool) == "Tool" then
+            local toolName = getname(tool)
+            local category = getWeaponCategory(toolName)
+            
+            if category then
+                local priority = table.find(categoryOrder, category) or math.huge
+                if priority < highestPriority then
+                    highestPriority = priority
+                    bestCategory = category
+                end
+            end
+        end
+    end
+    
+    return bestCategory
 end
 
 
@@ -69,9 +90,20 @@ local function updateArmedPlayersList()
         local backpack = findfirstchild(player, "Backpack")
         local character = getcharacter(player)
         
-        if hasWeaponInContainer(backpack) or 
-           (character and hasWeaponInContainer(character)) then
-            newArmed[getname(player)] = true
+        local backpackCategory = findHighestPriorityWeapon(backpack)
+        local charCategory = findHighestPriorityWeapon(character)
+        
+        local finalCategory = backpackCategory
+        if charCategory then
+            local charPriority = table.find(categoryOrder, charCategory) or math.huge
+            local currentPriority = table.find(categoryOrder, backpackCategory) or math.huge
+            if charPriority < currentPriority then
+                finalCategory = charCategory
+            end
+        end
+
+        if finalCategory then
+            newArmed[getname(player)] = finalCategory
         end
     end
 
@@ -79,8 +111,9 @@ local function updateArmedPlayersList()
     local npcFolder = findfirstchild(Workspace, "NPCSFolder")
     if npcFolder then
         for _, npc in ipairs(getchildren(npcFolder)) do
-            if hasWeaponInContainer(npc) then
-                newArmed[getname(npc)] = true
+            local category = findHighestPriorityWeapon(npc)
+            if category then
+                newArmed[getname(npc)] = category
             end
         end
     end
@@ -92,25 +125,22 @@ local function updateGeneratorsList()
     local bloodFolder = findfirstchild(Workspace, "BloodFolder")
     if not bloodFolder then return end
 
-    local validGenerators = {}
-    
-
+    cached.Generators = {}
     for _, mapFolder in ipairs(getchildren(bloodFolder)) do
-        local generatorsFolder = findfirstchild(mapFolder, "Generators")
-        if generatorsFolder then
-            for _, generator in ipairs(getchildren(generatorsFolder)) do
-                if getname(generator) == "GENERATOERINTER" then
-                    table.insert(validGenerators, generator)
+        local gensFolder = findfirstchild(mapFolder, "Generators")
+        if gensFolder then
+            for _, gen in ipairs(getchildren(gensFolder)) do
+                if getname(gen) == "GENERATOERINTER" then
+                    table.insert(cached.Generators, gen)
                 end
             end
         end
     end
-
-    cached.Generators = validGenerators
 end
 
 
-local function handlePlayerESP()
+local function renderPlayerESPs()
+    local currentESPs = {}
     local targets = {}
 
 
@@ -121,103 +151,114 @@ local function handlePlayerESP()
         end
     end
 
-
     for _, player in ipairs(getchildren(PlayersService)) do
         local char = getcharacter(player)
-        if char then
-            targets[getname(player)] = char
-        end
+        if char then targets[getname(player)] = char end
     end
 
 
     for name, target in pairs(targets) do
         local rootPart = findfirstchild(target, "HumanoidRootPart")
-        if rootPart and cached.ArmedPlayers[name] then
-            if not cached.ESPs[name] then
-                cached.ESPs[name] = createESPObject(
-                    ESP_SETTINGS.Armed.Text,
-                    ESP_SETTINGS.Armed.Color
-                )
-            end
-            
+        local categoryName = cached.ArmedPlayers[name]
+        
+        if rootPart and categoryName then
             local pos = getposition(rootPart)
             local screenPos, onScreen = worldtoscreenpoint({pos.x, pos.y, pos.z})
             
-            cached.ESPs[name].Visible = onScreen
             if onScreen then
-                cached.ESPs[name].Position = {
-                    screenPos.x,
-                    screenPos.y - ESP_SETTINGS.Armed.Offset
+                local category = weaponMarkers[categoryName]
+                currentESPs[name] = {
+                    text = category.label,
+                    color = category.color,
+                    size = category.size,
+                    position = {screenPos.x, screenPos.y - ESP_SETTINGS.offsets.player}
                 }
             end
-        else
-            if cached.ESPs[name] then
-                cached.ESPs[name]:Remove()
-                cached.ESPs[name] = nil
-            end
         end
+    end
+
+
+    for name, esp in pairs(cached.ESPs) do
+        if not currentESPs[name] then
+            esp:Remove()
+            cached.ESPs[name] = nil
+        end
+    end
+
+
+    for name, data in pairs(currentESPs) do
+        if not cached.ESPs[name] then
+            local newESP = Drawing.new("Text")
+            newESP.Text = data.text
+            newESP.Color = data.color
+            newESP.Size = data.size
+            newESP.Center = true
+            newESP.Outline = true
+            newESP.Visible = true
+            cached.ESPs[name] = newESP
+        end
+        cached.ESPs[name].Position = data.position
     end
 end
 
-local function handleGeneratorESP()
-
-    for generator, esp in pairs(cached.GeneratorESPs) do
-        if not table.find(cached.Generators, generator) then
-            esp:Remove()
-            cached.GeneratorESPs[generator] = nil
-        end
-    end
+local function renderGeneratorESPs()
+    local currentGens = {}
 
 
-    for _, generator in ipairs(cached.Generators) do
-        if not cached.GeneratorESPs[generator] then
-            cached.GeneratorESPs[generator] = createESPObject(
-                ESP_SETTINGS.Generator.Text,
-                ESP_SETTINGS.Generator.Color
-            )
-        end
-        
-        local pos = getValidPosition(generator, "Handle")
+    for _, gen in ipairs(cached.Generators) do
+        local pos = getposition(gen)
         local screenPos, onScreen = worldtoscreenpoint({pos.x, pos.y, pos.z})
         
-        cached.GeneratorESPs[generator].Visible = onScreen
         if onScreen then
-            cached.GeneratorESPs[generator].Position = {
-                screenPos.x,
-                screenPos.y - ESP_SETTINGS.Generator.Offset
-            }
+            table.insert(currentGens, {
+                position = {screenPos.x, screenPos.y - ESP_SETTINGS.offsets.generator},
+                instance = gen
+            })
         end
     end
-end
 
 
-local function maintainArmedList()
-    while true do
-        updateArmedPlayersList()
-        wait(UPDATE_INTERVALS.ArmedList)
+    for gen, esp in pairs(cached.GeneratorESPs) do
+        if not table.find(currentGens, gen) then
+            esp:Remove()
+            cached.GeneratorESPs[gen] = nil
+        end
+    end
+
+
+    for _, data in ipairs(currentGens) do
+        local gen = data.instance
+        if not cached.GeneratorESPs[gen] then
+            local newESP = Drawing.new("Text")
+            newESP.Text = ESP_SETTINGS.Generator.text
+            newESP.Color = ESP_SETTINGS.Generator.color
+            newESP.Size = ESP_SETTINGS.Generator.size
+            newESP.Center = true
+            newESP.Outline = true
+            newESP.Visible = true
+            cached.GeneratorESPs[gen] = newESP
+        end
+        cached.GeneratorESPs[gen].Position = data.position
     end
 end
 
-local function maintainGenerators()
+
+local function mainLoop()
     while true do
-        updateGeneratorsList()
-        wait(UPDATE_INTERVALS.Generators)
+        local success, err = pcall(function()
+            updateArmedPlayersList()
+            updateGeneratorsList()
+            renderPlayerESPs()
+            renderGeneratorESPs()
+        end)
+        
+        if not success then
+            print("Error:", err)
+        end
+        
+        wait(0.03)
     end
 end
 
-local function mainRenderLoop()
-    while true do
-        handlePlayerESP()
-        handleGeneratorESP()
-        wait(UPDATE_INTERVALS.Positions)
-    end
-end
 
-
-local function initialize()
-    spawn(maintainArmedList)
-    spawn(maintainGenerators)
-    spawn(mainRenderLoop)
-end
-
-initialize()
+spawn(mainLoop)
