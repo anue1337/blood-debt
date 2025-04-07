@@ -1,27 +1,53 @@
 local PlayersService = findservice(Game, "Players")
 local Workspace = findservice(Game, "Workspace")
-local armedPlayers = {}
-local espCache = {}
+
+local ESP_SETTINGS = {
+    Armed = {
+        Text = "ARMED",
+        Color = {255, 0, 0},
+        Offset = 30
+    },
+    Generator = {
+        Text = "GENERATOR",
+        Color = {0, 255, 0},
+        Offset = 15
+    },
+    TextSize = 14
+}
+
+local UPDATE_INTERVALS = {
+    ArmedList = 0.2,
+    Generators = 2,
+    Positions = 0.03
+}
+
+local cached = {
+    ArmedPlayers = {},
+    Generators = {},
+    ESPs = {},
+    GeneratorESPs = {}
+}
 
 
-local function createESP()
+local function createESPObject(textContent, color)
     local text = Drawing.new("Text")
-    text.Text = "ARMED"
-    text.Color = {255, 0, 0}
-    text.Size = 14
+    text.Text = textContent
+    text.Color = color
+    text.Size = ESP_SETTINGS.TextSize
     text.Center = true
     text.Outline = true
     text.Visible = false
     return text
 end
 
-
-local function checkContainer(container)
+local function hasWeaponInContainer(container)
     if not container then return false end
     
     for _, tool in ipairs(getchildren(container)) do
         if getclassname(tool) == "Tool" then
-            if findfirstchild(tool, "ammoModel") or findfirstchild(tool, "GUNCHECK") then
+            local hasAmmo = findfirstchild(tool, "ammoModel")
+            local hasCheck = findfirstchild(tool, "GUNCHECK")
+            if hasAmmo or hasCheck then
                 return true
             end
         end
@@ -29,123 +55,169 @@ local function checkContainer(container)
     return false
 end
 
-
-local function checkWeapons(player)
-    
-    local backpack = findfirstchild(player, "Backpack")
-    if checkContainer(backpack) then return true end
-    
-    
-    local character = getcharacter(player)
-    if character and player ~= getlocalplayer() then
-        return checkContainer(character)
-    end
-    
-    return false
+local function getValidPosition(target, partName)
+    local part = findfirstchild(target, partName) or target
+    return getposition(part)
 end
 
 
-local function updateArmedList()
-    while true do
-        local newArmed = {}
+local function updateArmedPlayersList()
+    local newArmed = {}
+
+
+    for _, player in ipairs(getchildren(PlayersService)) do
+        local backpack = findfirstchild(player, "Backpack")
+        local character = getcharacter(player)
         
-        
-        for _, player in ipairs(getchildren(PlayersService)) do
-            if checkWeapons(player) then
-                newArmed[getname(player)] = true
+        if hasWeaponInContainer(backpack) or 
+           (character and hasWeaponInContainer(character)) then
+            newArmed[getname(player)] = true
+        end
+    end
+
+
+    local npcFolder = findfirstchild(Workspace, "NPCSFolder")
+    if npcFolder then
+        for _, npc in ipairs(getchildren(npcFolder)) do
+            if hasWeaponInContainer(npc) then
+                newArmed[getname(npc)] = true
             end
         end
-        
+    end
 
-        local npcFolder = findfirstchild(Workspace, "NPCSFolder")
-        if npcFolder then
-            for _, npc in ipairs(getchildren(npcFolder)) do
-                local npcName = getname(npc)
-                if checkContainer(npc) then
-                    newArmed[npcName] = true
+    cached.ArmedPlayers = newArmed
+end
+
+local function updateGeneratorsList()
+    local bloodFolder = findfirstchild(Workspace, "BloodFolder")
+    if not bloodFolder then return end
+
+    local validGenerators = {}
+    
+
+    for _, mapFolder in ipairs(getchildren(bloodFolder)) do
+        local generatorsFolder = findfirstchild(mapFolder, "Generators")
+        if generatorsFolder then
+            for _, generator in ipairs(getchildren(generatorsFolder)) do
+                if getname(generator) == "GENERATOERINTER" then
+                    table.insert(validGenerators, generator)
                 end
             end
         end
-        
-        armedPlayers = newArmed
-        wait(0.2)
     end
+
+    cached.Generators = validGenerators
 end
 
 
-local function mainESP()
-    while true do
+local function handlePlayerESP()
+    local targets = {}
 
-        local targets = {}
-        
 
-        local npcFolder = findfirstchild(Workspace, "NPCSFolder")
-        if npcFolder then
-            for _, npc in ipairs(getchildren(npcFolder)) do
-                targets[getname(npc)] = npc
-            end
+    local npcFolder = findfirstchild(Workspace, "NPCSFolder")
+    if npcFolder then
+        for _, npc in ipairs(getchildren(npcFolder)) do
+            targets[getname(npc)] = npc
         end
-        
+    end
 
-        for _, player in ipairs(getchildren(PlayersService)) do
-            local char = getcharacter(player)
-            if char then
-                targets[getname(player)] = char
-            end
+
+    for _, player in ipairs(getchildren(PlayersService)) do
+        local char = getcharacter(player)
+        if char then
+            targets[getname(player)] = char
         end
-        
+    end
 
-        for name, target in pairs(targets) do
-            local rootPart = findfirstchild(target, "HumanoidRootPart")
+
+    for name, target in pairs(targets) do
+        local rootPart = findfirstchild(target, "HumanoidRootPart")
+        if rootPart and cached.ArmedPlayers[name] then
+            if not cached.ESPs[name] then
+                cached.ESPs[name] = createESPObject(
+                    ESP_SETTINGS.Armed.Text,
+                    ESP_SETTINGS.Armed.Color
+                )
+            end
             
-            if rootPart and armedPlayers[name] then
-                if not espCache[name] then
-                    espCache[name] = createESP()
-                end
-                
-                local pos = getposition(rootPart)
-                local screenPos, onScreen = worldtoscreenpoint({pos.x, pos.y, pos.z})
-                
-                espCache[name].Visible = onScreen
-                if onScreen then
-                    espCache[name].Position = {screenPos.x, screenPos.y - 30}
-                end
-            else
-                if espCache[name] then
-                    espCache[name]:Remove()
-                    espCache[name] = nil
-                end
+            local pos = getposition(rootPart)
+            local screenPos, onScreen = worldtoscreenpoint({pos.x, pos.y, pos.z})
+            
+            cached.ESPs[name].Visible = onScreen
+            if onScreen then
+                cached.ESPs[name].Position = {
+                    screenPos.x,
+                    screenPos.y - ESP_SETTINGS.Armed.Offset
+                }
+            end
+        else
+            if cached.ESPs[name] then
+                cached.ESPs[name]:Remove()
+                cached.ESPs[name] = nil
             end
         end
-        
+    end
+end
 
-        for cachedName, esp in pairs(espCache) do
-            if not armedPlayers[cachedName] then
-                esp:Remove()
-                espCache[cachedName] = nil
-            end
+local function handleGeneratorESP()
+
+    for generator, esp in pairs(cached.GeneratorESPs) do
+        if not table.find(cached.Generators, generator) then
+            esp:Remove()
+            cached.GeneratorESPs[generator] = nil
+        end
+    end
+
+
+    for _, generator in ipairs(cached.Generators) do
+        if not cached.GeneratorESPs[generator] then
+            cached.GeneratorESPs[generator] = createESPObject(
+                ESP_SETTINGS.Generator.Text,
+                ESP_SETTINGS.Generator.Color
+            )
         end
         
-        wait(0.03)
+        local pos = getValidPosition(generator, "Handle")
+        local screenPos, onScreen = worldtoscreenpoint({pos.x, pos.y, pos.z})
+        
+        cached.GeneratorESPs[generator].Visible = onScreen
+        if onScreen then
+            cached.GeneratorESPs[generator].Position = {
+                screenPos.x,
+                screenPos.y - ESP_SETTINGS.Generator.Offset
+            }
+        end
     end
 end
 
 
-local function keyControl()
+local function maintainArmedList()
     while true do
-        if getpressedkey() == "End" then
-            for _, esp in pairs(espCache) do
-                esp:Remove()
-            end
-            espCache = {}
-            print("ESP desativado")
-            break
-        end
-        wait(0.1)
+        updateArmedPlayersList()
+        wait(UPDATE_INTERVALS.ArmedList)
+    end
+end
+
+local function maintainGenerators()
+    while true do
+        updateGeneratorsList()
+        wait(UPDATE_INTERVALS.Generators)
+    end
+end
+
+local function mainRenderLoop()
+    while true do
+        handlePlayerESP()
+        handleGeneratorESP()
+        wait(UPDATE_INTERVALS.Positions)
     end
 end
 
 
-spawn(updateArmedList)
-spawn(mainESP)
-spawn(keyControl)
+local function initialize()
+    spawn(maintainArmedList)
+    spawn(maintainGenerators)
+    spawn(mainRenderLoop)
+end
+
+initialize()
