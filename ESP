@@ -3,7 +3,7 @@ local Workspace = findservice(Game, "Workspace")
 
 local weaponMarkers = {
     Killer = {
-        weapons = {"Sawn-off", "K1911", "RR-LightCompactPistolS", "JS2-Derringy", "KOLT-AR15", "JS-22", "KamatovS", "RY's GG-17", "AT's KAR15"},
+        weapons = {"Sawn-off", "K1911", "RR-LightCompactPistolS", "JS2-Derringy", "KOLT-AR15", "JS-22", "KamatovS", "RY's GG-17", "AT's KAR15", "VK's ANKM"},
         color = {255, 0, 0},  
         label = "KILLER",
         size = 14
