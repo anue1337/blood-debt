@@ -4,13 +4,13 @@ local Workspace = findservice(Game, "Workspace")
 local weaponMarkers = {
     Killer = {
         weapons = {"Sawn-off", "K1911", "RR-LightCompactPistolS", "JS2-Derringy", "KOLT-AR15", "JS-22", "KamatovS"},
-        color = {255, 0, 0},
+        color = {255, 0, 0},  
         label = "KILLER",
         size = 14
     },
     Sheriff = {
         weapons = {"RR-Snubby", "GG-17", "IZVEKH-412"},
-        color = {0, 0, 255},
+        color = {0, 0, 255},  
         label = "SHERIFF",
         size = 16
     }
@@ -21,7 +21,7 @@ local categoryOrder = {"Killer", "Sheriff"}
 local ESP_SETTINGS = {
     Generator = {
         text = "GENERATOR",
-        color = {0, 255, 0},
+        color = {0, 255, 0},  
         size = 14
     },
     offsets = {
@@ -243,33 +243,24 @@ local function renderGeneratorESPs()
 end
 
 
-local function maintainArmedList()
+local function eternalLoop()
     while true do
-        updateArmedPlayersList()
-        wait(0.5)
+        local success, err = pcall(function()
+            while true do
+                updateArmedPlayersList()
+                updateGeneratorsList()
+                renderPlayerESPs()
+                renderGeneratorESPs()
+                wait(0.03)
+            end
+        end)
+        
+        if not success then
+            print("Critical error, restarting:", err)
+            wait(1)  
+        end
     end
 end
 
-local function maintainGenerators()
-    while true do
-        updateGeneratorsList()
-        wait(3)
-    end
-end
 
-local function mainRenderLoop()
-    while true do
-        renderPlayerESPs()
-        renderGeneratorESPs()
-        wait(0.03)
-    end
-end
-
-local function initialize()
-    spawn(maintainArmedList)
-    spawn(maintainGenerators)
-    spawn(mainRenderLoop)
-end
-
-
-initialize()
+spawn(eternalLoop)
