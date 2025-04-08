@@ -9,7 +9,7 @@ local weaponMarkers = {
         size = 14
     },
     Sheriff = {
-        weapons = {"RR-Snubby", "GG-17", "IZVEKH-412"},
+        weapons = {"RR-Snubby", "GG-17", "IZVEKH-412", "RR-40", "IZVEKH-412"},
         color = {0, 0, 255},  
         label = "SHERIFF",
         size = 16
