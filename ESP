@@ -1,266 +1,245 @@
-local PlayersService = findservice(Game, "Players")
-local Workspace = findservice(Game, "Workspace")
-
-local weaponMarkers = {
-    Killer = {
-        weapons = {"Sawn-off", "K1911", "RR-LightCompactPistolS", "JS2-Derringy", "KOLT-AR15", "JS-22", "KamatovS", "RY's GG-17", "AT's KAR15", "VK's ANKM"},
-        color = {255, 0, 0},  
-        label = "KILLER",
-        size = 14
+local Options = {
+    ["Render Distance"] = 400,
+    ["Box"] = {
+        ["Color"] = {255, 255, 255},
+        ["Thickness"] = 1.5,
+        ["Transparency"] = 1
     },
-    Sheriff = {
-        weapons = {"RR-Snubby", "GG-17", "IZVEKH-412", "RR-40", "IZVEKH-412"},
-        color = {0, 0, 255},  
-        label = "SHERIFF",
-        size = 16
+    ["Outline"] = {
+        ["Color"] = {0, 0, 0},
+        ["Thickness"] = 0.5,
+        ["Transparency"] = 1
+    },
+    ["Name"] = {
+        ["Color"] = {255, 255, 255},
+        ["Font"] = 5
+    },
+    ["Distance"] = {
+        ["Color"] = {255, 255, 255},
+        ["Font"] = 5
     }
 }
 
-local categoryOrder = {"Killer", "Sheriff"}
-
-local ESP_SETTINGS = {
-    Generator = {
-        text = "GENERATOR",
-        color = {0, 255, 0},  
-        size = 14
+local WEAPON_CLASSES = {
+    KILLER = {
+        ["Sawn-off"] = true,
+        ["K1911"] = true,
+        ["RR-LightCompactPistolS"] = true,
+        ["JS2-Derringy"] = true,
+        ["KOLT-AR15"] = true,
+        ["JS-22"] = true,
+        ["KamatovS"] = true,
+        ["RY's GG-17"] = true,
+        ["AT's KAR15"] = true,
+        ["VK's ANKM"] = true
     },
-    offsets = {
-        player = 30,
-        generator = 15
+    SHERIFF = {
+        ["RR-Snubby"] = true,
+        ["GG-17"] = true,
+        ["IZVEKH-412"] = true,
+        ["RR-40"] = true
     }
 }
 
-local cached = {
-    ArmedPlayers = {},
-    Generators = {},
-    ESPs = {},
-    GeneratorESPs = {}
-}
+local Drawings = {}
+local TrackedEntities = {}
+local Workspace = findfirstchildofclass(Game, "Workspace")
+local Camera = findfirstchild(Workspace, "Camera")
 
-
-local function tableFind(tbl, value)
-    for _, v in ipairs(tbl) do
-        if v == value then
-            return true
-        end
-    end
-    return false
+local function CalculateDistance(Position1, Position2)
+    return math.sqrt((Position1.x - Position2.x) ^ 2 + (Position1.y - Position2.y) ^ 2 + (Position1.z - Position2.z) ^ 2)
 end
 
-local function getWeaponCategory(toolName)
-    for _, categoryName in ipairs(categoryOrder) do
-        local category = weaponMarkers[categoryName]
-        if tableFind(category.weapons, toolName) then
-            return categoryName
+local function GetPlayerRole(Entity)
+
+    for _, Tool in ipairs(getchildren(Entity)) do
+        if getclassname(Tool) == "Tool" then
+            local WeaponName = getname(Tool)
+            for Role, Weapons in pairs(WEAPON_CLASSES) do
+                if Weapons[WeaponName] then
+                    return Role
+                end
+            end
         end
     end
+    
+
+    local Players = findfirstchildofclass(Game, "Players")
+    if Players then
+        local Player = findfirstchild(Players, getname(Entity))
+        if Player then
+            local Backpack = findfirstchild(Player, "Backpack")
+            if Backpack then
+                for _, Tool in ipairs(getchildren(Backpack)) do
+                    if getclassname(Tool) == "Tool" then
+                        local WeaponName = getname(Tool)
+                        for Role, Weapons in pairs(WEAPON_CLASSES) do
+                            if Weapons[WeaponName] then
+                                return Role
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
     return nil
 end
 
-local function findHighestPriorityWeapon(container)
-    if not container then return nil end
-    
-    local highestPriority = math.huge
-    local bestCategory = nil
+function AddEntity(Entity)
+    if Drawings[Entity] then return end
 
-    for _, tool in ipairs(getchildren(container)) do
-        if getclassname(tool) == "Tool" then
-            local toolName = getname(tool)
-            local category = getWeaponCategory(toolName)
-            
-            if category then
-                local priority = table.find(categoryOrder, category) or math.huge
-                if priority < highestPriority then
-                    highestPriority = priority
-                    bestCategory = category
+    local Box = Drawing.new("Square")
+    Box.Visible = true
+    Box.Color = Options.Box.Color
+    Box.Thickness = Options.Box.Thickness
+    Box.Transparency = Options.Box.Transparency
+
+    local Outline = Drawing.new("Square")
+    Outline.Visible = true
+    Outline.Color = Options.Outline.Color
+    Outline.Thickness = Options.Outline.Thickness
+    Outline.Transparency = Options.Outline.Transparency
+
+    local Name = Drawing.new("Text")
+    Name.Visible = true
+    Name.Color = Options.Name.Color
+    Name.Size = 12
+    Name.Font = Options.Name.Font
+    Name.Outline = true
+
+    local Distance = Drawing.new("Text")
+    Distance.Visible = true
+    Distance.Color = Options.Distance.Color
+    Distance.Size = 12
+    Distance.Font = Options.Distance.Font
+    Distance.Outline = true
+
+    Drawings[Entity] = {Box = Box, Outline = Outline, Name = Name, Distance = Distance}
+    table.insert(TrackedEntities, Entity)
+end
+
+spawn(function()
+    while wait() do
+        local CameraPos = getposition(Camera)
+
+        for I = #TrackedEntities, 1, -1 do
+            local Entity = TrackedEntities[I]
+            local EntityDrawings = Drawings[Entity]
+            local Box = EntityDrawings.Box
+            local Outline = EntityDrawings.Outline
+            local Name = EntityDrawings.Name
+            local Distance = EntityDrawings.Distance
+
+            local HumanoidRootPart = findfirstchild(Entity, "HumanoidRootPart")
+            local Head = findfirstchild(Entity, "Head")
+            local RootPos = HumanoidRootPart and getposition(HumanoidRootPart)
+
+            if not Entity or not isdescendantof(Entity, Workspace) or not HumanoidRootPart then
+                if Box then Box:Remove() end
+                if Outline then Outline:Remove() end
+                if Name then Name:Remove() end
+                if Distance then Distance:Remove() end
+                Drawings[Entity] = nil
+                table.remove(TrackedEntities, I)
+            else
+                local DistanceToPlayer = CalculateDistance(CameraPos, RootPos)
+                local Role = GetPlayerRole(Entity)
+                
+                Name.Text = Role and Role:upper() or getname(Entity)
+                
+                if DistanceToPlayer > Options["Render Distance"] then
+                    Box.Visible = false
+                    Outline.Visible = false
+                    Name.Visible = false
+                    Distance.Visible = false
+                else
+                    if Head then
+                        local MinX, MinY, MinZ = math.huge, math.huge, math.huge
+                        local MaxX, MaxY, MaxZ = -math.huge, -math.huge, -math.huge
+
+                        for _, Part in ipairs(getchildren(Entity)) do
+                            if (getclassname(Part) == "Part" or getclassname(Part) == "MeshPart") and getname(Part) ~= "hitbox" then
+                                local Pos = getposition(Part)
+                                local Size = getsize(Part)
+                                if Pos and Size then
+                                    MinX = math.min(MinX, Pos.x - Size.x / 2)
+                                    MinY = math.min(MinY, Pos.y - Size.y / 2)
+                                    MinZ = math.min(MinZ, Pos.z - Size.z / 2)
+                                    MaxX = math.max(MaxX, Pos.x + Size.x / 2)
+                                    MaxY = math.max(MaxY, Pos.y + Size.y / 2)
+                                    MaxZ = math.max(MaxZ, Pos.z + Size.z / 2)
+                                end
+                            end
+                        end
+
+                        local Corners = {
+                            {MinX, MinY, MinZ}, {MaxX, MinY, MinZ},
+                            {MinX, MaxY, MinZ}, {MaxX, MaxY, MinZ},
+                            {MinX, MinY, MaxZ}, {MaxX, MinY, MaxZ},
+                            {MinX, MaxY, MaxZ}, {MaxX, MaxY, MaxZ}
+                        }
+
+                        local ScreenPoints = {}
+                        for _, Corner in ipairs(Corners) do
+                            local ScreenPoint, OnScreen = WorldToScreenPoint(Corner)
+                            if OnScreen then
+                                table.insert(ScreenPoints, ScreenPoint)
+                            end
+                        end
+
+                        if #ScreenPoints > 0 then
+                            local MinX2, MinY2 = math.huge, math.huge
+                            local MaxX2, MaxY2 = -math.huge, -math.huge
+
+                            for _, Point in ipairs(ScreenPoints) do
+                                MinX2 = math.min(MinX2, Point.x)
+                                MinY2 = math.min(MinY2, Point.y)
+                                MaxX2 = math.max(MaxX2, Point.x)
+                                MaxY2 = math.max(MaxY2, Point.y)
+                            end
+
+                            local Width = MaxX2 - MinX2
+                            local Height = MaxY2 - MinY2
+
+                            Box.Position = {MinX2, MinY2}
+                            Box.Size = {Width, Height}
+                            Outline.Position = {MinX2 - 1, MinY2 - 1}
+                            Outline.Size = {Width + 2, Height + 2}
+                            Name.Position = {MinX2 + Width/2 - Name.TextBounds.x/2, MinY2 - 15}
+                            Distance.Position = {MinX2 + Width/2 - Distance.TextBounds.x/2, MaxY2 + 5}
+                            Distance.Text = string.format("%.1f m", DistanceToPlayer)
+
+                            Box.Visible = Role ~= nil
+                            Outline.Visible = Role ~= nil
+                            Name.Visible = Role ~= nil
+                            Distance.Visible = Role ~= nil
+                        else
+                            Box.Visible = false
+                            Outline.Visible = false
+                            Name.Visible = false
+                            Distance.Visible = false
+                        end
+                    end
                 end
             end
         end
     end
-    
-    return bestCategory
-end
+end)
 
-
-local function updateArmedPlayersList()
-    local newArmed = {}
-
-
-    for _, player in ipairs(getchildren(PlayersService)) do
-        local backpack = findfirstchild(player, "Backpack")
-        local character = getcharacter(player)
-        
-        local backpackCategory = findHighestPriorityWeapon(backpack)
-        local charCategory = findHighestPriorityWeapon(character)
-        
-        local finalCategory = backpackCategory
-        if charCategory then
-            local charPriority = table.find(categoryOrder, charCategory) or math.huge
-            local currentPriority = table.find(categoryOrder, backpackCategory) or math.huge
-            if charPriority < currentPriority then
-                finalCategory = charCategory
-            end
-        end
-
-        if finalCategory then
-            newArmed[getname(player)] = finalCategory
-        end
-    end
-
-
-    local npcFolder = findfirstchild(Workspace, "NPCSFolder")
-    if npcFolder then
-        for _, npc in ipairs(getchildren(npcFolder)) do
-            local category = findHighestPriorityWeapon(npc)
-            if category then
-                newArmed[getname(npc)] = category
-            end
-        end
-    end
-
-    cached.ArmedPlayers = newArmed
-end
-
-local function updateGeneratorsList()
-    local bloodFolder = findfirstchild(Workspace, "BloodFolder")
-    if not bloodFolder then return end
-
-    cached.Generators = {}
-    for _, mapFolder in ipairs(getchildren(bloodFolder)) do
-        local gensFolder = findfirstchild(mapFolder, "Generators")
-        if gensFolder then
-            for _, gen in ipairs(getchildren(gensFolder)) do
-                if getname(gen) == "GENERATOERINTER" then
-                    table.insert(cached.Generators, gen)
+spawn(function()
+    while wait(1) do
+        local NPCSFolder = findfirstchild(Workspace, "NPCSFolder")
+        if NPCSFolder then
+            for _, PlayerModel in ipairs(getchildren(NPCSFolder)) do
+                if getclassname(PlayerModel) == "Model" then
+                    local Hrp = findfirstchild(PlayerModel, "HumanoidRootPart")
+                    if Hrp and not Drawings[PlayerModel] then
+                        AddEntity(PlayerModel)
+                    end
                 end
             end
         end
     end
-end
-
-
-local function renderPlayerESPs()
-    local currentESPs = {}
-    local targets = {}
-
-
-    local npcFolder = findfirstchild(Workspace, "NPCSFolder")
-    if npcFolder then
-        for _, npc in ipairs(getchildren(npcFolder)) do
-            targets[getname(npc)] = npc
-        end
-    end
-
-    for _, player in ipairs(getchildren(PlayersService)) do
-        local char = getcharacter(player)
-        if char then targets[getname(player)] = char end
-    end
-
-
-    for name, target in pairs(targets) do
-        local rootPart = findfirstchild(target, "HumanoidRootPart")
-        local categoryName = cached.ArmedPlayers[name]
-        
-        if rootPart and categoryName then
-            local pos = getposition(rootPart)
-            local screenPos, onScreen = worldtoscreenpoint({pos.x, pos.y, pos.z})
-            
-            if onScreen then
-                local category = weaponMarkers[categoryName]
-                currentESPs[name] = {
-                    text = category.label,
-                    color = category.color,
-                    size = category.size,
-                    position = {screenPos.x, screenPos.y - ESP_SETTINGS.offsets.player}
-                }
-            end
-        end
-    end
-
-
-    for name, esp in pairs(cached.ESPs) do
-        if not currentESPs[name] then
-            esp:Remove()
-            cached.ESPs[name] = nil
-        end
-    end
-
-
-    for name, data in pairs(currentESPs) do
-        if not cached.ESPs[name] then
-            local newESP = Drawing.new("Text")
-            newESP.Text = data.text
-            newESP.Color = data.color
-            newESP.Size = data.size
-            newESP.Center = true
-            newESP.Outline = true
-            newESP.Visible = true
-            cached.ESPs[name] = newESP
-        end
-        cached.ESPs[name].Position = data.position
-    end
-end
-
-local function renderGeneratorESPs()
-    local currentGens = {}
-
-
-    for _, gen in ipairs(cached.Generators) do
-        local pos = getposition(gen)
-        local screenPos, onScreen = worldtoscreenpoint({pos.x, pos.y, pos.z})
-        
-        if onScreen then
-            table.insert(currentGens, {
-                position = {screenPos.x, screenPos.y - ESP_SETTINGS.offsets.generator},
-                instance = gen
-            })
-        end
-    end
-
-
-    for gen, esp in pairs(cached.GeneratorESPs) do
-        if not table.find(currentGens, gen) then
-            esp:Remove()
-            cached.GeneratorESPs[gen] = nil
-        end
-    end
-
-
-    for _, data in ipairs(currentGens) do
-        local gen = data.instance
-        if not cached.GeneratorESPs[gen] then
-            local newESP = Drawing.new("Text")
-            newESP.Text = ESP_SETTINGS.Generator.text
-            newESP.Color = ESP_SETTINGS.Generator.color
-            newESP.Size = ESP_SETTINGS.Generator.size
-            newESP.Center = true
-            newESP.Outline = true
-            newESP.Visible = true
-            cached.GeneratorESPs[gen] = newESP
-        end
-        cached.GeneratorESPs[gen].Position = data.position
-    end
-end
-
-
-local function eternalLoop()
-    while true do
-        local success, err = pcall(function()
-            while true do
-                updateArmedPlayersList()
-                updateGeneratorsList()
-                renderPlayerESPs()
-                renderGeneratorESPs()
-                wait(0.03)
-            end
-        end)
-        
-        if not success then
-            print("Critical error, restarting:", err)
-            wait(1)  
-        end
-    end
-end
-
-
-spawn(eternalLoop)
+end)
