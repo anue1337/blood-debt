@@ -31,7 +31,8 @@ local WEAPON_CLASSES = {
         ["KamatovS"] = true,
         ["RY's GG-17"] = true,
         ["AT's KAR15"] = true,
-        ["VK's ANKM"] = true
+        ["VK's ANKM"] = true,
+        ["Rosen-Obrez"] = true
     },
     SHERIFF = {
         ["RR-Snubby"] = true,
