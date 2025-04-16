@@ -52,7 +52,6 @@ local function CalculateDistance(Position1, Position2)
 end
 
 local function GetPlayerRole(Entity)
-
     for _, Tool in ipairs(getchildren(Entity)) do
         if getclassname(Tool) == "Tool" then
             local WeaponName = getname(Tool)
@@ -64,7 +63,6 @@ local function GetPlayerRole(Entity)
         end
     end
     
-
     local Players = findfirstchildofclass(Game, "Players")
     if Players then
         local Player = findfirstchild(Players, getname(Entity))
@@ -148,6 +146,18 @@ spawn(function()
                 local DistanceToPlayer = CalculateDistance(CameraPos, RootPos)
                 local Role = GetPlayerRole(Entity)
                 
+
+                if Role == "SHERIFF" then
+                    Box.Color = {0, 0, 255}
+                    Name.Color = {0, 0, 255}
+                elseif Role == "KILLER" then
+                    Box.Color = {255, 0, 0}
+                    Name.Color = {255, 0, 0}
+                else
+                    Box.Color = Options.Box.Color
+                    Name.Color = Options.Name.Color
+                end
+                
                 Name.Text = Role and Role:upper() or getname(Entity)
                 
                 if DistanceToPlayer > Options["Render Distance"] then
@@ -157,6 +167,7 @@ spawn(function()
                     Distance.Visible = false
                 else
                     if Head then
+
                         local MinX, MinY, MinZ = math.huge, math.huge, math.huge
                         local MaxX, MaxY, MaxZ = -math.huge, -math.huge, -math.huge
 
